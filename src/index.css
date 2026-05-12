@@ -1,0 +1,182 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* Warm paper / ink editorial palette */
+    --background: 38 30% 96%;
+    --foreground: 25 20% 12%;
+
+    --paper: 38 35% 94%;
+    --ink: 25 25% 10%;
+    --ink-soft: 25 15% 30%;
+    --rule: 30 15% 80%;
+
+    --card: 38 30% 96%;
+    --card-foreground: 25 20% 12%;
+
+    --popover: 38 30% 96%;
+    --popover-foreground: 25 20% 12%;
+
+    --primary: 15 55% 38%;            /* terracotta accent */
+    --primary-foreground: 38 35% 96%;
+    --primary-glow: 25 70% 55%;
+
+    --secondary: 35 25% 88%;
+    --secondary-foreground: 25 20% 12%;
+
+    --muted: 35 20% 90%;
+    --muted-foreground: 25 12% 40%;
+
+    --accent: 195 35% 30%;            /* deep ink-blue */
+    --accent-foreground: 38 35% 96%;
+
+    --destructive: 0 60% 45%;
+    --destructive-foreground: 38 35% 96%;
+
+    --border: 30 15% 82%;
+    --input: 30 15% 82%;
+    --ring: 15 55% 38%;
+
+    --radius: 0.25rem;
+
+    --font-serif: 'Lora', Georgia, ui-serif, serif;
+    --font-mono: 'DM Mono', ui-monospace, monospace;
+    --font-sans: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+
+    --ink-dim: 25 14% 32%;
+    --ink-muted: 25 10% 52%;
+    --terra: 15 54% 37%;
+    --terra-light: 15 54% 47%;
+    --blue-ink: 196 36% 28%;
+
+    --sidebar-background: 0 0% 98%;
+
+    --sidebar-foreground: 240 5.3% 26.1%;
+
+    --sidebar-primary: 240 5.9% 10%;
+
+    --sidebar-primary-foreground: 0 0% 98%;
+
+    --sidebar-accent: 240 4.8% 95.9%;
+
+    --sidebar-accent-foreground: 240 5.9% 10%;
+
+    --sidebar-border: 220 13% 91%;
+
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 25 16% 9%;
+    --foreground: 38 22% 90%;
+    --paper: 25 14% 12%;
+    --ink: 38 22% 90%;
+    --ink-soft: 38 14% 68%;
+    --ink-dim: 38 14% 68%;
+    --ink-muted: 38 10% 48%;
+    --rule: 25 10% 20%;
+    --terra: 20 60% 58%;
+    --terra-light: 20 60% 68%;
+    --blue-ink: 196 40% 55%;
+    --card: 25 18% 10%;
+    --card-foreground: 38 25% 92%;
+    --popover: 25 18% 10%;
+    --popover-foreground: 38 25% 92%;
+    --primary: 25 70% 60%;
+    --primary-foreground: 25 18% 8%;
+    --primary-glow: 30 80% 70%;
+    --secondary: 25 12% 18%;
+    --secondary-foreground: 38 25% 92%;
+    --muted: 25 12% 16%;
+    --muted-foreground: 38 12% 65%;
+    --accent: 195 40% 60%;
+    --accent-foreground: 25 18% 8%;
+    --destructive: 0 60% 50%;
+    --destructive-foreground: 38 25% 92%;
+    --border: 25 10% 22%;
+    --input: 25 10% 22%;
+    --ring: 25 70% 60%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "ss02", "kern";
+  }
+
+  h1, h2, h3, h4, h5, h6, .font-serif {
+    font-family: var(--font-serif);
+    font-feature-settings: "ss01", "kern", "liga";
+    letter-spacing: -0.02em;
+  }
+
+  .font-mono { font-family: var(--font-mono); }
+
+  /* Subtle paper texture */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background-image: radial-gradient(hsl(var(--ink) / 0.025) 1px, transparent 1px);
+    background-size: 4px 4px;
+  }
+
+  .draft-body {
+    font-family: var(--font-serif);
+    font-size: 1.125rem;
+    line-height: 1.85;
+    white-space: pre-wrap;
+    color: hsl(var(--ink));
+  }
+
+  .label-mono {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: hsl(var(--muted-foreground));
+  }
+}
+
+@keyframes pulse-pill {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.65; }
+}
+@keyframes shimmer {
+  0%, 100% { opacity: 0.5; }
+  50%       { opacity: 1; }
+}
+
+/* Heart like animation */
+@keyframes heart-pop {
+  0%   { transform: scale(1);    }
+  25%  { transform: scale(1.5);  }
+  50%  { transform: scale(0.88); }
+  75%  { transform: scale(1.2);  }
+  100% { transform: scale(1);    }
+}
+.heart-pop {
+  animation: heart-pop 0.42s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
