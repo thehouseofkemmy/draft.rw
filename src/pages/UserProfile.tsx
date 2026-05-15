@@ -13,20 +13,9 @@ import AvatarCropModal from "@/components/profile/AvatarCropModal";
 import CoverPickerModal, { parseCover } from "@/components/profile/CoverPickerModal";
 import FollowListModal from "@/components/profile/FollowListModal";
 import ProfileSidebar from "@/components/profile/ProfileSidebar";
-
-// Per-handle cache — visiting /alice then /bob then back to /alice loads from memory
-type ProfileCacheEntry = {
-  profile: Profile | null;
-  pieces: Piece[];
-  repostPiecesTab: Piece[];
-  followers: number;
-  following: number;
-  isFollowing: boolean;
-  tab: "pieces" | "reposts";
-  scroll: number;
-  loadedAt: number;
-};
-const profileCache: Map<string, ProfileCacheEntry> = new Map();
+import { profileCache, seedProfileMeta, type ProfileCacheEntry } from "@/lib/profileCache";
+import { cacheMany } from "@/lib/pieceCache";
+import { useCompose } from "@/hooks/useCompose";
 
 type Profile = {
   id: string;
@@ -45,6 +34,7 @@ type RawDraft = {
   created_at: string;
   author_id: string | null;
   quote_of_id?: string | null;
+  pinned?: boolean;
 };
 
 type ProfileTab = "pieces" | "reposts";
@@ -115,16 +105,30 @@ export default function UserProfile() {
 
   const isOwnProfile = !!user && profile?.id === user.id;
 
+  // Prepend newly published pieces instantly — no reload needed
+  const { lastPublished } = useCompose();
+  const seenPublishedId = useRef<string | null>(null);
+  useEffect(() => {
+    if (!lastPublished) return;
+    if (lastPublished.id === seenPublishedId.current) return;
+    if (lastPublished.authorId !== profile?.id) return;
+    seenPublishedId.current = lastPublished.id;
+    setPieces((ps) => ps.some((p) => p.id === lastPublished.id) ? ps : [lastPublished, ...ps]);
+  }, [lastPublished, profile?.id]);
+
   useEffect(() => {
     if (!handle) return;
-    const stale = !cached || Date.now() - cached.loadedAt > 60_000;
-    if (stale) loadProfile();
+    // Always refresh — if we have cache, show it immediately and refresh silently in background.
+    // This ensures a just-posted piece appears without needing a manual reload.
+    loadProfile();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handle, user]);
 
   const loadProfile = async () => {
     if (!handle) return;
-    if (!profileCache.get(handle)?.pieces.length) setLoading(true);
+    // Show skeleton only on true cold start (nothing cached yet)
+    const hasCachedPieces = (profileCache.get(handle)?.pieces.length ?? 0) > 0;
+    if (!hasCachedPieces) setLoading(true);
 
     const { data: prof } = await supabase
       .from("profiles")
@@ -139,11 +143,12 @@ export default function UserProfile() {
     const [draftsRes, repostsRes, followersRes, followingRes] = await Promise.all([
       supabase
         .from("drafts")
-        .select("id, title, content, created_at, author_id, quote_of_id")
+        .select("id, title, content, created_at, author_id, quote_of_id, pinned")
         .eq("author_id", prof.id)
         .eq("published", true)
         .is("reply_to_id" as any, null)
-        .order("created_at", { ascending: false }),
+        .order("created_at", { ascending: false })
+        .then((r) => { if (r.error) console.error("[profile drafts]", r.error.message, r.error.details); return r; }),
       // Reposts: just get the draft IDs + repost times (no nested join)
       supabase
         .from("reposts")
@@ -165,7 +170,7 @@ export default function UserProfile() {
       authorId: prof.id, authorName: prof.display_name ?? handle,
       authorHandle: handle, authorAvatarUrl: prof.avatar_url,
       likes: 0, comments: 0, reposts: 0,
-      liked: false, reposted: false, bookmarked: false,
+      liked: false, reposted: false, bookmarked: false, pinned: d.pinned ?? false,
     }));
 
     // Map reposts — fetch draft details + original author profiles separately
@@ -278,9 +283,25 @@ export default function UserProfile() {
     }
 
     // "Pieces" tab = own drafts only, sorted newest first
-    setPieces(draftPieces.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+    // Pinned post floats to top, rest sorted by date
+    const sortedDraftPieces = draftPieces.sort((a, b) => {
+      if (a.pinned && !b.pinned) return -1;
+      if (!a.pinned && b.pinned) return 1;
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+    const sortedRepostPieces = repostPieces.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    setPieces(sortedDraftPieces);
     // "Reposts" tab = reposted pieces, sorted by repost time
-    setRepostPiecesTab(repostPieces.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+    setRepostPiecesTab(sortedRepostPieces);
+
+    // Seed piece + profile caches so clicking pieces/authors from this profile is instant
+    cacheMany([...sortedDraftPieces, ...sortedRepostPieces]);
+    sortedRepostPieces.forEach((p) => {
+      if (p.authorHandle) seedProfileMeta(p.authorHandle, {
+        id: p.authorId, display_name: p.authorName,
+        avatar_url: p.authorAvatarUrl ?? null, handle: p.authorHandle,
+      });
+    });
 
     // Is current user following this profile?
     if (user && user.id !== prof.id) {
@@ -644,6 +665,7 @@ export default function UserProfile() {
                 }}
                 onAuthOpen={() => navigate("/auth")}
                 isAuthenticated={!!user}
+                onDelete={(id) => setPieces((ps) => ps.filter((p) => p.id !== id))}
               />
             ))}
           </div>

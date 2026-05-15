@@ -7,6 +7,9 @@ import { useProfile } from "@/hooks/useProfile";
 import Avatar from "@/components/feed/Avatar";
 import { HeartIcon, BookmarkIcon } from "@/components/feed/Icons";
 import { VerifiedBadge, isVerified } from "@/components/feed/VerifiedBadge";
+import InteractionListModal from "@/components/feed/InteractionListModal";
+import { cachePiece, getCachedPiece } from "@/lib/pieceCache";
+import { seedProfileMeta } from "@/lib/profileCache";
 
 /** Embedded quoted piece — shown inside the quoting piece */
 export type QuotedPiece = {
@@ -32,6 +35,7 @@ export type Piece = {
   liked: boolean;
   reposted: boolean;
   bookmarked: boolean;
+  pinned?: boolean;
   /** Set when this card is a repost — shows "↩ @handle reposted" header */
   repostedByHandle?: string | null;
   /** Embedded quoted piece */
@@ -53,9 +57,11 @@ type Props = {
   /** Called after the user successfully posts a quote of this piece, with the new draft's id+createdAt.
    *  Parent should optimistically insert the quote piece into its feed. */
   onQuotePosted?: (quoteDraft: { id: string; created_at: string; body: string; quoteOf: QuotedPiece }) => void;
+  /** Called after this piece is deleted so the parent can remove it from the list */
+  onDelete?: (id: string) => void;
 };
 
-export default function PieceCard({ piece, onLike, onAuthOpen, isAuthenticated, onRepost, onQuotePosted }: Props) {
+export default function PieceCard({ piece, onLike, onAuthOpen, isAuthenticated, onRepost, onQuotePosted, onDelete }: Props) {
   const { user } = useAuth();
   const { profile: myProfile } = useProfile();
   const navigate = useNavigate();
@@ -81,7 +87,19 @@ export default function PieceCard({ piece, onLike, onAuthOpen, isAuthenticated, 
   const [quoteOpen, setQuoteOpen]   = useState(false);
   const [quoteText, setQuoteText]   = useState("");
   const [quoteBusy, setQuoteBusy]   = useState(false);
+
+  // Delete
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleted, setDeleted]             = useState(false);
+
+  // Interaction list modals
+  const [interactionModal, setInteractionModal] = useState<"likes" | "reposts" | null>(null);
+
+  // Pin
+  const [pinned, setPinned] = useState(piece.pinned ?? false);
   const [quoteDone, setQuoteDone]   = useState(false);
+
+  if (deleted) return null;
 
   const real = isRealId(piece.id);
   // Use local overrides if a save has happened this session
@@ -145,6 +163,23 @@ export default function PieceCard({ piece, onLike, onAuthOpen, isAuthenticated, 
     setDropOpen(false);
   };
 
+  const handlePin = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const next = !pinned;
+    setPinned(next);
+    setDropOpen(false);
+    await supabase.from("drafts").update({ pinned: next } as any).eq("id", piece.id);
+  };
+
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!deleteConfirm) { setDeleteConfirm(true); return; }
+    setDeleted(true);
+    setDropOpen(false);
+    await supabase.from("drafts").delete().eq("id", piece.id);
+    onDelete?.(piece.id);
+  };
+
   const handleQuoteSubmit = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!isAuthenticated) { onAuthOpen("join"); return; }
@@ -199,10 +234,23 @@ export default function PieceCard({ piece, onLike, onAuthOpen, isAuthenticated, 
     setEditOpen(false);
   };
 
-  const goToPost   = () => { if (real && !editOpen) navigate(`/drafts/${piece.id}`); };
+  const goToPost = () => {
+    if (real && !editOpen) {
+      cachePiece({ ...piece, title: displayTitle, body: displayBody });
+      navigate(`/drafts/${piece.id}`, { state: { piece: { ...piece, title: displayTitle, body: displayBody } } });
+    }
+  };
   const goToAuthor = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (piece.authorHandle) navigate(`/${piece.authorHandle}`);
+    if (piece.authorHandle) {
+      seedProfileMeta(piece.authorHandle, {
+        id: piece.authorId,
+        display_name: piece.authorName,
+        avatar_url: piece.authorAvatarUrl ?? null,
+        handle: piece.authorHandle,
+      });
+      navigate(`/${piece.authorHandle}`);
+    }
   };
   const closeRepostMenu = () => setRepostMenuOpen(false);
 
@@ -213,6 +261,13 @@ export default function PieceCard({ piece, onLike, onAuthOpen, isAuthenticated, 
         onClick={goToPost}
         style={{ cursor: real ? "pointer" : "default" }}
       >
+        {/* Pin indicator */}
+        {pinned && (
+          <div className="flex items-center gap-1.5 mb-2.5 text-ink-muted font-mono text-[11px]">
+            <i className="ti ti-pin text-[12px]" />
+            <span>pinned</span>
+          </div>
+        )}
         {/* Repost header */}
         {piece.repostedByHandle && (
           <div className="flex items-center gap-1.5 mb-2.5 text-ink-muted font-mono text-[11px]">
@@ -283,6 +338,21 @@ export default function PieceCard({ piece, onLike, onAuthOpen, isAuthenticated, 
                         }}
                       />
                     )}
+                    {isOwnPiece && real && (
+                      <DropItem
+                        icon={pinned ? "ti-pin-filled" : "ti-pin"}
+                        label={pinned ? "unpin" : "pin to profile"}
+                        onClick={handlePin}
+                      />
+                    )}
+                    {isOwnPiece && real && (
+                      <DropItem
+                        icon="ti-trash"
+                        label={deleteConfirm ? "tap again to confirm" : "delete"}
+                        danger
+                        onClick={handleDelete}
+                      />
+                    )}
                     {!isOwnPiece && <DropItem icon="ti-flag" label="report" danger onClick={(e) => { e.stopPropagation(); setDropOpen(false); }} />}
                   </div>
                 )}
@@ -342,7 +412,7 @@ export default function PieceCard({ piece, onLike, onAuthOpen, isAuthenticated, 
                   {isLong && real && (
                     <button
                       className="inline ml-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-terra bg-transparent border-none cursor-pointer p-0 hover:underline"
-                      onClick={(e) => { e.stopPropagation(); navigate(`/drafts/${piece.id}`); }}
+                      onClick={(e) => { e.stopPropagation(); cachePiece(piece); navigate(`/drafts/${piece.id}`, { state: { piece } }); }}
                     >
                       read more
                     </button>
@@ -357,7 +427,11 @@ export default function PieceCard({ piece, onLike, onAuthOpen, isAuthenticated, 
                 className="mb-3 border border-rule/60 px-3 py-2.5 cursor-pointer hover:bg-paper/60 transition-colors"
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (isRealId(piece.quoteOf!.id)) navigate(`/drafts/${piece.quoteOf!.id}`);
+                  if (isRealId(piece.quoteOf!.id)) {
+                    const qid = piece.quoteOf!.id;
+                    const qCached = getCachedPiece(qid);
+                    navigate(`/drafts/${qid}`, qCached ? { state: { piece: qCached } } : undefined);
+                  }
                 }}
               >
                 <div className="flex items-center gap-1.5 mb-1 min-w-0">
@@ -391,7 +465,7 @@ export default function PieceCard({ piece, onLike, onAuthOpen, isAuthenticated, 
                 count={piece.comments}
                 hoverColor="hsl(196 36% 28%)"
                 hoverBg="hsl(196 36% 28% / 0.08)"
-                onClick={(e) => { e.stopPropagation(); if (real) navigate(`/drafts/${piece.id}#reply`); }}
+                onClick={(e) => { e.stopPropagation(); if (real) { cachePiece(piece); navigate(`/drafts/${piece.id}#reply`, { state: { piece } }); } }}
               />
 
               {/* Repost + Quote dropdown */}
@@ -409,7 +483,12 @@ export default function PieceCard({ piece, onLike, onAuthOpen, isAuthenticated, 
                   }}
                 >
                   <i className="ti ti-repeat text-[16px]" />
-                  {repostCount > 0 && <span>{repostCount}</span>}
+                  {repostCount > 0 && (
+                    <span
+                      className="hover:underline"
+                      onClick={(e) => { e.stopPropagation(); if (real) setInteractionModal("reposts"); }}
+                    >{repostCount}</span>
+                  )}
                 </button>
                 {repostMenuOpen && (
                   <>
@@ -449,7 +528,12 @@ export default function PieceCard({ piece, onLike, onAuthOpen, isAuthenticated, 
                 onClick={handleLike}
               >
                 <HeartIcon filled={piece.liked} size={16} />
-                {piece.likes > 0 && <span>{piece.likes}</span>}
+                {piece.likes > 0 && (
+                  <span
+                    className="hover:underline"
+                    onClick={(e) => { e.stopPropagation(); if (real) setInteractionModal("likes"); }}
+                  >{piece.likes}</span>
+                )}
               </button>
 
               {/* Bookmark */}
@@ -535,6 +619,14 @@ export default function PieceCard({ piece, onLike, onAuthOpen, isAuthenticated, 
             </div>
           </div>
         </div>
+      )}
+
+      {interactionModal && real && (
+        <InteractionListModal
+          draftId={piece.id}
+          type={interactionModal}
+          onClose={() => setInteractionModal(null)}
+        />
       )}
     </>
   );

@@ -83,6 +83,7 @@ CREATE TABLE public.drafts (
   published    BOOLEAN NOT NULL DEFAULT true,
   reply_to_id  UUID REFERENCES public.drafts(id) ON DELETE CASCADE,
   quote_of_id  UUID REFERENCES public.drafts(id) ON DELETE SET NULL,
+  pinned       BOOLEAN NOT NULL DEFAULT false,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );

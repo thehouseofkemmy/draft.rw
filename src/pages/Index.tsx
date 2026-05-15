@@ -6,9 +6,12 @@ import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/hooks/useProfile";
 import Layout from "@/components/draft/Layout";
 import ComposeBox from "@/components/feed/ComposeBox";
+import { useCompose } from "@/hooks/useCompose";
 import PieceCard, { Piece, QuotedPiece } from "@/components/feed/PieceCard";
 import SkeletonPiece from "@/components/feed/SkeletonPiece";
 import RightSidebar from "@/components/feed/RightSidebar";
+import { cacheMany } from "@/lib/pieceCache";
+import { seedProfileMeta } from "@/lib/profileCache";
 
 type Tab = "foryou" | "recent";
 
@@ -103,8 +106,22 @@ export default function Index() {
     return () => window.removeEventListener("scroll", onScroll);
   }, [tab]);
   const [search, setSearch] = useState("");
+  const { open: openCompose, savedDraft, lastPublished } = useCompose();
   const [authModal, setAuthModal] = useState<"join" | "login" | null>(null);
   const [showNewPill, setShowNewPill] = useState(false);
+  const seenPublishedId = useRef<string | null>(null);
+
+  // When a new post is published (from any page), prepend it to the feed.
+  // The ref guard prevents double-prepend when the component re-mounts with
+  // a stale lastPublished already in context.
+  useEffect(() => {
+    if (!lastPublished) return;
+    if (lastPublished.id === seenPublishedId.current) return;
+    seenPublishedId.current = lastPublished.id;
+    setPieces((ps) => ps.some((p) => p.id === lastPublished.id) ? ps : [lastPublished, ...ps]);
+    setTab("recent");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [lastPublished]);
   const [writers, setWriters] = useState<Writer[]>(feedCache.writers);
   const pillTimer = useRef<ReturnType<typeof setTimeout>>();
 
@@ -149,13 +166,14 @@ export default function Index() {
     setShowNewPill(false);
 
     // ── PHASE 1 — Fetch drafts + author profiles only. Render ASAP.
-    const { data: rawDrafts } = await supabase
+    const { data: rawDrafts, error: draftsError } = await supabase
       .from("drafts")
       .select("id, title, content, created_at, author_id, reply_to_id, quote_of_id")
       .eq("published", true)
       .is("reply_to_id" as any, null)
       .order("created_at", { ascending: false })
       .limit(100);
+    if (draftsError) console.error("[feed drafts]", draftsError.message, draftsError.details);
 
     if (!rawDrafts || rawDrafts.length === 0) {
       setPieces([]);
@@ -292,6 +310,15 @@ export default function Index() {
     setWriters(ws.slice(0, 5));
     setLoading(false);
     feedCache.loadedAt = Date.now();
+
+    // Seed caches so clicking any piece or author is instant (no skeleton flash)
+    cacheMany(enriched);
+    enriched.forEach((p) => {
+      if (p.authorHandle) seedProfileMeta(p.authorHandle, {
+        id: p.authorId, display_name: p.authorName,
+        avatar_url: p.authorAvatarUrl ?? null, handle: p.authorHandle,
+      });
+    });
   };
 
   const handleLike = async (id: string) => {
@@ -305,62 +332,6 @@ export default function Index() {
       await supabase.from("likes").insert({ draft_id: id, user_id: user.id });
     } else {
       await supabase.from("likes").delete().eq("draft_id", id).eq("user_id", user.id);
-    }
-  };
-
-  const handlePublish = async (body: string, title: string) => {
-    if (!user) { setAuthModal("join"); return; }
-    const { data } = await supabase
-      .from("drafts")
-      .insert({ content: body, title: title || "", published: true, author_id: user.id })
-      .select("id, created_at")
-      .single();
-    if (data) {
-      const d = data as { id: string; created_at: string };
-      const name   = myProfile?.display_name ?? user.email?.split("@")[0] ?? "drafter";
-      const handle = myProfile?.handle ?? user.email?.split("@")[0] ?? "";
-      const newPiece: Piece = {
-        id: d.id,
-        title: title || null,
-        body,
-        created_at: d.created_at,
-        authorId: user.id,
-        authorName: name,
-        authorHandle: handle,
-        authorAvatarUrl: myProfile?.avatar_url ?? null,
-        likes: 0, comments: 0, reposts: 0,
-        liked: false, reposted: false, bookmarked: false,
-      };
-      setPieces((ps) => [newPiece, ...ps]);
-
-      // Make sure the user actually SEES their new piece:
-      // 1. Switch to "recent" (chronological) — "for you" sorts by engagement and would bury a 0-likes post
-      // 2. Scroll the page back to the top
-      setTab("recent");
-      window.scrollTo({ top: 0, behavior: "smooth" });
-
-      // Confirmation + share affordance
-      const url = `${window.location.origin}/drafts/${d.id}`;
-      toast.success("draft posted", {
-        description: "your piece is now live.",
-        action: {
-          label: "share",
-          onClick: () => {
-            // Use Web Share API when available (mobile), fall back to clipboard
-            const sharePayload = { title: "drafts.rw", text: title || "a new piece on drafts.rw", url };
-            if (typeof navigator.share === "function") {
-              navigator.share(sharePayload).catch(() => {
-                navigator.clipboard.writeText(url).then(() => toast("link copied")).catch(() => {});
-              });
-            } else {
-              navigator.clipboard.writeText(url)
-                .then(() => toast("link copied"))
-                .catch(() => {});
-            }
-          },
-        },
-        duration: 6000,
-      });
     }
   };
 
@@ -384,7 +355,7 @@ export default function Index() {
     <>
       <Layout
         onAuthOpen={(m) => setAuthModal(m)}
-        sidebar={<RightSidebar onSearch={setSearch} writers={writers} />}
+        sidebar={<RightSidebar onSearch={setSearch} />}
       >
         {/* Tabs */}
         <div className="sticky top-0 bg-background z-[5] border-b border-rule/50">
@@ -425,7 +396,11 @@ export default function Index() {
         </div>
 
         {/* Compose */}
-        <ComposeBox onPublish={handlePublish} onAuthOpen={(m) => setAuthModal(m)} />
+        <ComposeBox
+          onAuthOpen={(m) => setAuthModal(m)}
+          onOpenCompose={openCompose}
+          savedDraft={savedDraft}
+        />
 
         {/* Feed */}
         {loading ? (
@@ -450,6 +425,7 @@ export default function Index() {
                   onLike={handleLike}
                   onAuthOpen={(m) => setAuthModal(m)}
                   isAuthenticated={!!user}
+                  onDelete={(id) => setPieces((ps) => ps.filter((p) => p.id !== id))}
                   onQuotePosted={(q) => {
                     if (!user) return;
                     const name   = myProfile?.display_name ?? user.email?.split("@")[0] ?? "drafter";
@@ -485,6 +461,7 @@ export default function Index() {
           onNavigate={() => { setAuthModal(null); navigate("/auth"); }}
         />
       )}
+
     </>
   );
 }
@@ -511,7 +488,7 @@ function AuthModal({
 }: { onClose: () => void; onNavigate: () => void }) {
   return (
     <div
-      className="fixed inset-0 bg-[hsl(25_22%_11%_/_0.55)] z-50 flex items-center justify-center"
+      className="fixed inset-0 bg-black/40 backdrop-blur-[2px] z-50 flex items-center justify-center"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div className="bg-background border border-rule/60 p-8 w-[360px] max-w-[92vw] relative">

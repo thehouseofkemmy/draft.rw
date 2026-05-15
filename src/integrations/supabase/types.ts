@@ -80,6 +80,7 @@ export type Database = {
           created_at: string
           excerpt: string | null
           id: string
+          pinned: boolean
           published: boolean
           quote_of_id: string | null
           reply_to_id: string | null
@@ -92,6 +93,7 @@ export type Database = {
           created_at?: string
           excerpt?: string | null
           id?: string
+          pinned?: boolean
           published?: boolean
           quote_of_id?: string | null
           reply_to_id?: string | null
@@ -104,6 +106,7 @@ export type Database = {
           created_at?: string
           excerpt?: string | null
           id?: string
+          pinned?: boolean
           published?: boolean
           quote_of_id?: string | null
           reply_to_id?: string | null

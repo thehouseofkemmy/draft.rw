@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import Avatar from "@/components/feed/Avatar";
+import { seedProfileMeta } from "@/lib/profileCache";
 
 type Person = {
   id: string;
@@ -48,6 +49,9 @@ export default function FollowListModal({ profileId, type, onClose }: Props) {
 
     const list = (profiles ?? []) as Person[];
     setPeople(list);
+    list.forEach((p) => {
+      if (p.handle) seedProfileMeta(p.handle, { id: p.id, display_name: p.display_name, avatar_url: p.avatar_url, handle: p.handle });
+    });
 
     // Load follow state (which of these does the current user follow?)
     if (user) {

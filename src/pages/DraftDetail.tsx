@@ -10,6 +10,8 @@ import Avatar from "@/components/feed/Avatar";
 import PieceCard, { Piece, QuotedPiece } from "@/components/feed/PieceCard";
 import SkeletonPiece from "@/components/feed/SkeletonPiece";
 import { HeartIcon, BookmarkIcon } from "@/components/feed/Icons";
+import { cacheMany } from "@/lib/pieceCache";
+import { seedProfileMeta } from "@/lib/profileCache";
 
 type Draft = {
   id: string;
@@ -45,6 +47,38 @@ export default function DraftDetail() {
   const { profile: myProfile } = useProfile();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // If we navigated here from a PieceCard (which passes `state.piece`), seed the draft cache
+  // immediately so the page content shows without a loading skeleton.
+  // loadedAt is left at 0 so the full fetch (replies, counts, user interactions) still runs.
+  const statePiece = (location.state as any)?.piece as Piece | undefined;
+  if (id && statePiece && !draftCache.has(id)) {
+    draftCache.set(id, {
+      draft: {
+        id: statePiece.id,
+        title: statePiece.title ?? null,
+        content: statePiece.body,
+        created_at: statePiece.created_at,
+        author_id: statePiece.authorId,
+        profiles: {
+          display_name: statePiece.authorName,
+          handle: statePiece.authorHandle,
+          avatar_url: statePiece.authorAvatarUrl ?? null,
+        },
+        quote_of_id: null, // quoteOf is already resolved in statePiece
+      },
+      mainQuoteOf: statePiece.quoteOf ?? null,
+      stats: { likes: statePiece.likes, comments: statePiece.comments, reposts: statePiece.reposts },
+      liked: statePiece.liked,
+      reposted: statePiece.reposted,
+      bookmarked: statePiece.bookmarked,
+      replies: [],
+      moreByAuthor: [],
+      youMightLike: [],
+      scroll: 0,
+      loadedAt: 0,
+    });
+  }
 
   const cached = id ? draftCache.get(id) : undefined;
   const [draft, setDraft]           = useState<Draft | null>(cached?.draft ?? null);
@@ -256,6 +290,7 @@ export default function DraftDetail() {
       };
     });
     setReplies(replyPieces);
+    cacheMany(replyPieces);
 
     setStats({
       likes: (likeCountRes.data ?? []).length,
@@ -363,8 +398,18 @@ export default function DraftDetail() {
       return piece;
     };
 
-    if (moreData.length > 0) setMoreByAuthor(moreData.map(toPiece));
-    setYouMightLike(recentData.slice(0, 3).map(toPiece));
+    const morePieces = moreData.length > 0 ? moreData.map(toPiece) : [];
+    const likePieces = recentData.slice(0, 3).map(toPiece);
+    if (morePieces.length > 0) setMoreByAuthor(morePieces);
+    setYouMightLike(likePieces);
+    // Seed piece cache + profile metas so clicking suggestions is instant
+    cacheMany([...morePieces, ...likePieces]);
+    [...morePieces, ...likePieces].forEach((p) => {
+      if (p.authorHandle) seedProfileMeta(p.authorHandle, {
+        id: p.authorId, display_name: p.authorName,
+        avatar_url: p.authorAvatarUrl ?? null, handle: p.authorHandle,
+      });
+    });
   };
 
   const handleLike = async () => {

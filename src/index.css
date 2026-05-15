@@ -180,3 +180,22 @@ All colors MUST be HSL.
 .heart-pop {
   animation: heart-pop 0.42s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
 }
+
+/* Draft autosave flash — ComposeBox lights up when text falls back from modal */
+@keyframes draft-save-flash {
+  0%   { background-color: hsl(var(--terra) / 0.13); }
+  55%  { background-color: hsl(var(--terra) / 0.07); }
+  100% { background-color: transparent; }
+}
+.draft-save-flash {
+  animation: draft-save-flash 1.5s ease-out forwards;
+}
+
+/* Font preference override — toggled via useFont hook */
+.font-pref-sans .font-serif,
+.font-pref-sans .draft-body,
+.font-pref-sans textarea,
+.font-pref-sans input[type="text"] {
+  font-family: var(--font-sans) !important;
+  letter-spacing: 0;
+}

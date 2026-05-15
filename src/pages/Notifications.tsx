@@ -72,6 +72,8 @@ export default function Notifications() {
 
   useEffect(() => {
     if (!user) { navigate("/auth"); return; }
+    // Clear badge immediately — don't wait for the load to finish
+    markAllRead();
     const stale = Date.now() - cache.loadedAt > 60_000;
     if (!hasCache || stale) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -139,9 +141,6 @@ export default function Notifications() {
     setNotifs(mapped);
     setLoading(false);
     cache.loadedAt = Date.now();
-
-    // Mark all read
-    markAllRead();
   };
 
   if (!user) return null;
