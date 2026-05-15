@@ -189,6 +189,7 @@ export default function Bookmarks() {
               onLike={handleLike}
               onAuthOpen={() => navigate("/auth")}
               isAuthenticated={!!user}
+              onDelete={(id) => setPieces((ps) => ps.filter((p) => p.id !== id))}
             />
           ))}
         </div>
