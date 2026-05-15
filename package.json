@@ -4,6 +4,9 @@
   "version": "0.0.0",
   "description": "drafts.rw is a shared platform for drafts — pieces and quiet writing.",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "vite",
     "dev:full": "vercel dev",
