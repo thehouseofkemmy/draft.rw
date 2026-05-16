@@ -1,3 +1,15 @@
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const HANDLE_RE = /^[a-zA-Z0-9_]{1,30}$/;
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "https://drafts.rw");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -6,8 +18,18 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
   try {
-    const { email, handle, displayName } = req.body;
-    if (!email) return res.status(400).json({ error: "email required" });
+    const { email, handle, displayName } = req.body ?? {};
+    if (!email || typeof email !== "string") return res.status(400).json({ error: "email required" });
+    if (email.length > 255 || !EMAIL_RE.test(email)) return res.status(400).json({ error: "invalid email" });
+    if (handle && (typeof handle !== "string" || handle.length > 30 || !HANDLE_RE.test(handle))) {
+      return res.status(400).json({ error: "invalid handle" });
+    }
+    if (displayName && (typeof displayName !== "string" || displayName.length > 100)) {
+      return res.status(400).json({ error: "invalid display name" });
+    }
+
+    const safeName   = escapeHtml(displayName ?? handle ?? "writer");
+    const safeHandle = escapeHtml(handle ?? "");
 
     const emailRes = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -22,9 +44,9 @@ export default async function handler(req, res) {
         html: `
           <div style="font-family:Georgia,serif;max-width:400px;margin:0 auto;padding:40px 20px;color:#2a1f0f">
             <p style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;font-family:monospace;color:#999;margin-bottom:28px">drafts.rw</p>
-            <p style="font-size:22px;font-weight:500;margin-bottom:12px">welcome, ${displayName ?? handle}.</p>
+            <p style="font-size:22px;font-weight:500;margin-bottom:12px">welcome, ${safeName}.</p>
             <p style="font-size:15px;color:#6b5c47;line-height:1.7;margin-bottom:24px">
-              your handle is <strong>@${handle}</strong>.<br>
+              your handle is <strong>@${safeHandle}</strong>.<br>
               a quiet space for writing is now yours.
             </p>
             <p style="font-size:13px;color:#aaa;margin-bottom:4px">share a piece. follow writers. make it yours.</p>
@@ -39,7 +61,7 @@ export default async function handler(req, res) {
     });
 
     const body = await emailRes.json();
-    if (!emailRes.ok) return res.status(500).json({ error: body.message ?? "failed" });
+    if (!emailRes.ok) return res.status(500).json({ error: "failed to send email" });
 
     res.json({ ok: true });
   } catch (err) {

@@ -5,6 +5,8 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY,
 );
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "https://drafts.rw");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -13,8 +15,9 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
   try {
-    const { email } = req.body;
-    if (!email) return res.status(400).json({ error: "email required" });
+    const { email } = req.body ?? {};
+    if (!email || typeof email !== "string") return res.status(400).json({ error: "email required" });
+    if (email.length > 255 || !EMAIL_RE.test(email)) return res.status(400).json({ error: "invalid email" });
 
     const { data, error } = await supabaseAdmin.auth.admin.generateLink({
       type: "magiclink",
@@ -22,7 +25,7 @@ export default async function handler(req, res) {
       options: { shouldCreateUser: true },
     });
 
-    if (error) return res.status(400).json({ error: error.message });
+    if (error) return res.status(400).json({ error: "could not send code" });
 
     const otp = data.properties.email_otp;
 
@@ -48,7 +51,7 @@ export default async function handler(req, res) {
     });
 
     const resendBody = await emailRes.json();
-    if (!emailRes.ok) return res.status(500).json({ error: resendBody.message ?? "failed to send email" });
+    if (!emailRes.ok) return res.status(500).json({ error: "failed to send email" });
 
     res.json({ ok: true });
   } catch (err) {

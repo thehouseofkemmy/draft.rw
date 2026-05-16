@@ -17,7 +17,7 @@ const supabase = createClient(
 );
 
 webpush.setVapidDetails(
-  "mailto:hello@drafts.rw",
+  process.env.VAPID_SUBJECT ?? "mailto:hello@drafts.rw",
   process.env.VAPID_PUBLIC_KEY,
   process.env.VAPID_PRIVATE_KEY,
 );

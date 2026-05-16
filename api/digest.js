@@ -13,6 +13,15 @@
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 
+function escapeHtml(str) {
+  return String(str ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY,
@@ -105,13 +114,14 @@ export default async function handler(req, res) {
     const rows = Object.entries(grouped).map(([type, { names, draftId }]) => {
       const label   = TYPE_LABEL[type] ?? "interacted with you";
       const emoji   = TYPE_EMOJI[type] ?? "•";
-      const who     = names.length === 1
+      const rawWho  = names.length === 1
         ? names[0]
         : names.length === 2
           ? `${names[0]} and ${names[1]}`
           : `${names[0]} and ${names.length - 1} others`;
+      const who     = escapeHtml(rawWho);
       const link    = draftId
-        ? `https://drafts.rw/drafts/${draftId}`
+        ? `https://drafts.rw/drafts/${encodeURIComponent(draftId)}`
         : "https://drafts.rw/notifications";
 
       return `
@@ -145,7 +155,7 @@ export default async function handler(req, res) {
               daily digest
             </p>
             <p style="margin:0;font-size:18px;color:#e8dcc8;">
-              hey ${name}, here's what happened today
+              hey ${escapeHtml(name)}, here's what happened today
             </p>
           </td>
         </tr>
