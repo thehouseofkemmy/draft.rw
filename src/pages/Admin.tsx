@@ -17,7 +17,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { format } from "date-fns";
+import { format, isValid, parseISO } from "date-fns";
+
+const safeFormat = (val: string | null | undefined, fmt: string) => {
+  if (!val) return "—";
+  const d = parseISO(val);
+  return isValid(d) ? format(d, fmt) : "—";
+};
 import {
   Users, FileText, MessageSquare, Bell, Mail, LayoutDashboard,
   Trash2, Eye, EyeOff, ShieldCheck, ShieldOff, ExternalLink, Download, PenLine,
@@ -192,7 +198,7 @@ function UsersTab({ currentUserId }: { currentUserId: string }) {
                   ) : <span className="text-ink-soft">—</span>}
                 </TableCell>
                 <TableCell className="font-mono text-xs text-ink-soft">
-                  {format(new Date(u.created_at), "MMM d, yyyy")}
+                  {safeFormat(u.created_at, "MMM d, yyyy")}
                 </TableCell>
                 <TableCell>
                   <Badge variant={u.is_admin ? "default" : "secondary"} className="font-mono text-xs">
@@ -353,7 +359,7 @@ function ContentTab({ currentUserId }: { currentUserId: string }) {
                   ) : <span className="text-ink-soft font-mono text-xs">—</span>}
                 </TableCell>
                 <TableCell className="font-mono text-xs text-ink-soft whitespace-nowrap">
-                  {format(new Date(d.created_at), "MMM d, yyyy")}
+                  {safeFormat(d.created_at, "MMM d, yyyy")}
                 </TableCell>
                 <TableCell>
                   <Badge variant={d.published ? "default" : "secondary"} className="font-mono text-xs">
@@ -501,7 +507,7 @@ function CommentsTab() {
                   </Link>
                 </TableCell>
                 <TableCell className="font-mono text-xs text-ink-soft whitespace-nowrap">
-                  {format(new Date(c.created_at), "MMM d, yyyy")}
+                  {safeFormat(c.created_at, "MMM d, yyyy")}
                 </TableCell>
                 <TableCell className="text-right">
                   <Button size="sm" variant="ghost" onClick={() => deleteComment(c.id)}
@@ -616,7 +622,7 @@ function NotificationsTab() {
                   {n.to_profile?.handle ? `@${n.to_profile.handle}` : "—"}
                 </TableCell>
                 <TableCell className="font-mono text-xs text-ink-soft whitespace-nowrap">
-                  {format(new Date(n.created_at), "MMM d, HH:mm")}
+                  {safeFormat(n.created_at, "MMM d, HH:mm")}
                 </TableCell>
                 <TableCell>
                   <Badge variant={n.read ? "secondary" : "default"} className="font-mono text-xs">
@@ -667,7 +673,7 @@ function SubscribersTab() {
 
   const exportCsv = () => {
     const csv = ["email,joined", ...subs.map((s) =>
-      `${s.email},${format(new Date(s.created_at), "yyyy-MM-dd")}`
+      `${s.email},${safeFormat(s.created_at, "yyyy-MM-dd")}`
     )].join("\n");
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
@@ -707,7 +713,7 @@ function SubscribersTab() {
               <TableRow key={s.id} className="border-rule/30 hover:bg-surface/40">
                 <TableCell className="font-mono text-sm text-ink">{s.email}</TableCell>
                 <TableCell className="font-mono text-xs text-ink-soft">
-                  {format(new Date(s.created_at), "MMM d, yyyy")}
+                  {safeFormat(s.created_at, "MMM d, yyyy")}
                 </TableCell>
                 <TableCell className="text-right">
                   <Button size="sm" variant="ghost" onClick={() => deleteSub(s.id, s.email)}
